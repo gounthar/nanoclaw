@@ -147,6 +147,35 @@ Skills we'd like to see:
 - [Claude Code](https://claude.ai/download)
 - [Apple Container](https://github.com/apple/container) (macOS) or [Docker](https://docker.com/products/docker-desktop) (macOS/Linux)
 
+## Running on RISC-V (riscv64)
+
+NanoClaw runs on riscv64 Linux without source patches. Pre-built Docker images are available:
+
+```bash
+# From Docker Hub
+docker pull gounthar/nanoclaw:riscv64
+
+# Or from GitHub Container Registry
+docker pull ghcr.io/gounthar/nanoclaw:riscv64
+```
+
+**What works:** Host build (npm install + tsc), Docker container, agent SDK, container isolation.
+
+**What doesn't:** Browser automation (no Chromium for riscv64 in Debian), Docker Sandboxes/microVMs (requires H-extension hardware).
+
+**Requirements:** Docker Engine on a riscv64 board (tested on SpacemiT K1 / Banana Pi F3 and OrangePi RV2 with Armbian Trixie).
+
+**Building from source** (if you prefer):
+```bash
+git clone https://github.com/qwibitai/nanoclaw.git
+cd nanoclaw
+npm ci && npm run build  # ~16 min on SpacemiT K1
+```
+
+> Note: The vendored ripgrep binary in claude-agent-sdk doesn't include riscv64. The pre-built images install system ripgrep from Debian and symlink it. If building from source, install `ripgrep` and create the symlink manually.
+
+For the full story, see the [NanoClaw on RISC-V blog series](https://bruno.verachten.fr).
+
 ## Architecture
 
 ```
