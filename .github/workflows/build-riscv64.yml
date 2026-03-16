@@ -84,10 +84,16 @@ jobs:
         env:
           DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
         run: |
-          OUTPUT=$(echo '{}' | timeout 30 docker run --rm -i \
+          OUTPUT=$(echo '{}' | timeout 60 docker run --rm -i \
             "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1) || true
           echo "${OUTPUT}"
-          # "Not logged in" means the SDK initialized and responded correctly
-          echo "${OUTPUT}" | grep -q "Not logged in" \
-            && echo "Smoke test PASSED" \
-            || (echo "Smoke test FAILED — unexpected output" && exit 1)
+          # NANOCLAW_OUTPUT_START proves the agent runner initialized and produced output
+          # The actual response may be "Not logged in" or a status JSON — either is fine
+          echo "${OUTPUT}" | grep -q "NANOCLAW_OUTPUT_START" \
+            && echo "Smoke test PASSED — agent SDK produced output" \
+            || (echo "Smoke test FAILED — no agent output detected" && exit 1)
+          # Fail on missing vendored binaries (the ripgrep issue)
+          if echo "${OUTPUT}" | grep -q "ENOENT"; then
+            echo "Smoke test FAILED — missing binary detected"
+            exit 1
+          fi

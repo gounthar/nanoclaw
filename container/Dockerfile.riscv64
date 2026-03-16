@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     ca-certificates \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify Node.js version
@@ -18,6 +19,11 @@ RUN node --version && npm --version
 
 # Install claude-code globally (agent-browser skipped - no Chromium for riscv64)
 RUN npm install -g @anthropic-ai/claude-code 2>&1 || echo "WARN: claude-code global install may have issues on riscv64"
+
+# Symlink system ripgrep to where claude-agent-sdk expects it
+# The SDK vendors rg binaries but doesn't include riscv64
+RUN mkdir -p /usr/local/lib/node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep/riscv64-linux \
+    && ln -s /usr/bin/rg /usr/local/lib/node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep/riscv64-linux/rg 2>/dev/null || true
 
 # Create app directory
 WORKDIR /app
