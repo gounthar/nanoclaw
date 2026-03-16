@@ -1,0 +1,54 @@
+# NanoClaw Agent Container - RISC-V adaptation
+# Uses debian:trixie-slim as base since node:22-slim has no riscv64 image
+
+FROM debian:trixie-slim
+
+# Install Node.js and system dependencies
+# Note: Chromium is NOT available for riscv64 in Debian - browser automation disabled
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm \
+    curl \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify Node.js version
+RUN node --version && npm --version
+
+# Install claude-code globally (agent-browser skipped - no Chromium for riscv64)
+RUN npm install -g @anthropic-ai/claude-code 2>&1 || echo "WARN: claude-code global install may have issues on riscv64"
+
+# Create app directory
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY agent-runner/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY agent-runner/ ./
+
+# Build TypeScript
+RUN npm run build
+
+# Create workspace directories
+RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input
+
+# Create entrypoint script
+RUN printf '#!/bin/bash\nset -e\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Set ownership to node user (non-root) for writable directories
+RUN useradd -m node 2>/dev/null || true
+RUN chown -R node:node /workspace && chmod 777 /home/node
+
+# Switch to non-root user
+USER node
+
+# Set working directory to group workspace
+WORKDIR /workspace/group
+
+# Entry point reads JSON from stdin, outputs JSON to stdout
+ENTRYPOINT ["/app/entrypoint.sh"]

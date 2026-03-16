@@ -1,0 +1,33 @@
+name: Track NanoClaw releases
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check latest upstream release
+        run: |
+          LATEST=$(gh api repos/qwibitai/nanoclaw/releases/latest \
+            --jq '.tag_name' 2>/dev/null || echo "none")
+          echo "Latest upstream: ${LATEST}"
+
+          # Get last built version from our releases
+          LAST_BUILT=$(gh api "repos/${REPO}/releases/latest" \
+            --jq '.tag_name' 2>/dev/null || echo "none")
+          echo "Last built: ${LAST_BUILT}"
+
+          if [ "${LATEST}" != "none" ] && [ "${LATEST}" != "${LAST_BUILT}" ]; then
+            echo "New version detected: ${LATEST}"
+            gh workflow run build-riscv64.yml \
+              -R "${REPO}" \
+              -f nanoclaw_version="${LATEST}"
+          else
+            echo "No new version"
+          fi

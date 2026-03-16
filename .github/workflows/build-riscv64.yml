@@ -1,0 +1,69 @@
+name: Build NanoClaw riscv64 image
+
+on:
+  workflow_dispatch:
+    inputs:
+      nanoclaw_version:
+        description: 'NanoClaw version tag to build'
+        required: true
+        default: 'v1.2.12'
+  schedule:
+    - cron: '0 4 * * 1'  # Weekly, Monday 04:00 UTC
+
+jobs:
+  build:
+    runs-on: [self-hosted, riscv64]
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NANOCLAW_VERSION: ${{ inputs.nanoclaw_version || 'latest' }}
+
+    steps:
+      - name: Checkout upstream NanoClaw
+        uses: actions/checkout@v4
+        with:
+          repository: qwibitai/nanoclaw
+          ref: ${{ inputs.nanoclaw_version || 'main' }}
+
+      - name: Overlay riscv64 files from fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: |
+            container/Dockerfile.riscv64
+          sparse-checkout-cone-mode: false
+          path: _fork
+
+      - name: Copy riscv64 Dockerfile
+        run: cp _fork/container/Dockerfile.riscv64 container/
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        env:
+          GHCR: ghcr.io/${{ github.repository_owner }}/nanoclaw
+          DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
+        run: |
+          cd container
+          time docker build \
+            -f Dockerfile.riscv64 \
+            -t "${GHCR}:${NANOCLAW_VERSION}-riscv64" \
+            -t "${GHCR}:riscv64" \
+            -t "${DHUB}:${NANOCLAW_VERSION}-riscv64" \
+            -t "${DHUB}:riscv64" \
+            .
+
+          docker push --all-tags "${GHCR}"
+          docker push --all-tags "${DHUB}"
