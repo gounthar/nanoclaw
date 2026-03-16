@@ -67,3 +67,27 @@ jobs:
 
           docker push --all-tags "${GHCR}"
           docker push --all-tags "${DHUB}"
+
+  smoke-test:
+    needs: build
+    runs-on: [self-hosted, riscv64]
+    env:
+      NANOCLAW_VERSION: ${{ inputs.nanoclaw_version || 'latest' }}
+    steps:
+      - name: Pull image from Docker Hub
+        env:
+          DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
+        run: |
+          docker pull "${DHUB}:${NANOCLAW_VERSION}-riscv64"
+
+      - name: Smoke test — agent SDK initializes
+        env:
+          DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
+        run: |
+          OUTPUT=$(echo '{}' | timeout 30 docker run --rm -i \
+            "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1) || true
+          echo "${OUTPUT}"
+          # "Not logged in" means the SDK initialized and responded correctly
+          echo "${OUTPUT}" | grep -q "Not logged in" \
+            && echo "Smoke test PASSED" \
+            || (echo "Smoke test FAILED — unexpected output" && exit 1)
