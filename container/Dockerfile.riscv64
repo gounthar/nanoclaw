@@ -20,11 +20,6 @@ RUN node --version && npm --version
 # Install claude-code globally (agent-browser skipped - no Chromium for riscv64)
 RUN npm install -g @anthropic-ai/claude-code 2>&1 || echo "WARN: claude-code global install may have issues on riscv64"
 
-# Symlink system ripgrep to where claude-agent-sdk expects it
-# The SDK vendors rg binaries but doesn't include riscv64
-RUN mkdir -p /usr/local/lib/node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep/riscv64-linux \
-    && ln -s /usr/bin/rg /usr/local/lib/node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep/riscv64-linux/rg 2>/dev/null || true
-
 # Create app directory
 WORKDIR /app
 
@@ -39,6 +34,16 @@ COPY agent-runner/ ./
 
 # Build TypeScript
 RUN npm run build
+
+# Symlink system ripgrep to where claude-agent-sdk expects it
+# The SDK vendors rg binaries for x64/arm64 but not riscv64
+# Must run after npm install which creates the local node_modules copy
+RUN for sdk_dir in /usr/local/lib/node_modules/@anthropic-ai/claude-agent-sdk /app/node_modules/@anthropic-ai/claude-agent-sdk; do \
+      if [ -d "$sdk_dir/vendor/ripgrep" ]; then \
+        mkdir -p "$sdk_dir/vendor/ripgrep/riscv64-linux" && \
+        ln -sf /usr/bin/rg "$sdk_dir/vendor/ripgrep/riscv64-linux/rg"; \
+      fi; \
+    done
 
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input
