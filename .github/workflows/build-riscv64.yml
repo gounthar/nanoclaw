@@ -6,7 +6,7 @@ on:
       nanoclaw_version:
         description: 'NanoClaw version tag to build'
         required: true
-        default: 'v1.2.12'
+        default: 'main'
   schedule:
     - cron: '0 4 * * 1'  # Weekly, Monday 04:00 UTC
 
