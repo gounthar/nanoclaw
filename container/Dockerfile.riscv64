@@ -32,9 +32,6 @@ RUN npm install
 # Copy source code
 COPY agent-runner/ ./
 
-# Build TypeScript
-RUN npm run build
-
 # Symlink system ripgrep to where claude-agent-sdk expects it
 # The SDK vendors rg binaries for x64/arm64 but not riscv64
 # Must run after npm install which creates the local node_modules copy
