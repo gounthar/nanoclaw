@@ -17,8 +17,10 @@
  * src/session-manager.ts for the full set of cross-mount invariants and
  * scripts/sanity-live-poll.ts for the empirical validation.
  */
-import { Database } from 'bun:sqlite';
+import BetterSqlite3 from 'better-sqlite3';
 import fs from 'fs';
+
+type Database = BetterSqlite3.Database;
 
 const DEFAULT_INBOUND_PATH = '/workspace/inbound.db';
 const DEFAULT_OUTBOUND_PATH = '/workspace/outbound.db';
@@ -31,7 +33,7 @@ let _heartbeatPath: string = DEFAULT_HEARTBEAT_PATH;
 /** Inbound DB — container opens read-only (host is the sole writer). */
 export function getInboundDb(): Database {
   if (!_inbound) {
-    _inbound = new Database(DEFAULT_INBOUND_PATH, { readonly: true });
+    _inbound = new BetterSqlite3(DEFAULT_INBOUND_PATH, { readonly: true });
     _inbound.exec('PRAGMA busy_timeout = 5000');
   }
   return _inbound;
@@ -40,7 +42,7 @@ export function getInboundDb(): Database {
 /** Outbound DB — container owns this file (sole writer). */
 export function getOutboundDb(): Database {
   if (!_outbound) {
-    _outbound = new Database(DEFAULT_OUTBOUND_PATH);
+    _outbound = new BetterSqlite3(DEFAULT_OUTBOUND_PATH);
     _outbound.exec('PRAGMA journal_mode = DELETE');
     _outbound.exec('PRAGMA busy_timeout = 5000');
     _outbound.exec('PRAGMA foreign_keys = ON');
@@ -144,7 +146,7 @@ export function clearStaleProcessingAcks(): void {
 
 /** For tests — creates in-memory DBs with the session schemas. */
 export function initTestSessionDb(): { inbound: Database; outbound: Database } {
-  _inbound = new Database(':memory:');
+  _inbound = new BetterSqlite3(':memory:');
   _inbound.exec('PRAGMA foreign_keys = ON');
   _inbound.exec(`
     CREATE TABLE messages_in (
@@ -179,7 +181,7 @@ export function initTestSessionDb(): { inbound: Database; outbound: Database } {
     );
   `);
 
-  _outbound = new Database(':memory:');
+  _outbound = new BetterSqlite3(':memory:');
   _outbound.exec('PRAGMA foreign_keys = ON');
   _outbound.exec(`
     CREATE TABLE messages_out (
