@@ -32,11 +32,21 @@ jobs:
           ref: main
           sparse-checkout: |
             container/Dockerfile.riscv64
+            container/agent-runner/package.json
+            container/agent-runner/tsconfig.json
+            container/agent-runner/src/db/connection.ts
+            container/agent-runner/src/db/messages-out.ts
           sparse-checkout-cone-mode: false
           path: _fork
 
-      - name: Copy riscv64 Dockerfile
-        run: cp _fork/container/Dockerfile.riscv64 container/
+      - name: Copy riscv64 files
+        run: |
+          cp _fork/container/Dockerfile.riscv64 container/
+          cp _fork/container/agent-runner/package.json container/agent-runner/
+          cp _fork/container/agent-runner/tsconfig.json container/agent-runner/
+          mkdir -p container/agent-runner/src/db
+          cp _fork/container/agent-runner/src/db/connection.ts container/agent-runner/src/db/
+          cp _fork/container/agent-runner/src/db/messages-out.ts container/agent-runner/src/db/
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
