@@ -52,7 +52,7 @@ export function openInboundDb(): Database {
     const db = _inbound;
     return { prepare: (sql: string) => db.prepare(sql), exec: (sql: string) => db.exec(sql), close: () => {} } as unknown as Database;
   }
-  const db = new Database(DEFAULT_INBOUND_PATH, { readonly: true });
+  const db = new BetterSqlite3(DEFAULT_INBOUND_PATH, { readonly: true });
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec('PRAGMA mmap_size = 0');
   return db;
