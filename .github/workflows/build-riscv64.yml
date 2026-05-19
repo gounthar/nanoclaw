@@ -84,26 +84,82 @@ jobs:
     env:
       NANOCLAW_VERSION: ${{ inputs.nanoclaw_version || 'latest' }}
     steps:
+      - name: Checkout upstream NanoClaw for v2 session schema
+        uses: actions/checkout@v4
+        with:
+          repository: qwibitai/nanoclaw
+          ref: ${{ inputs.nanoclaw_version || 'main' }}
+
+      - name: Overlay smoke bootstrap from fork
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: |
+            .github/smoke/bootstrap-session-dbs.mjs
+          sparse-checkout-cone-mode: false
+          path: _fork
+
       - name: Pull image from Docker Hub
         env:
           DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
         run: |
           docker pull "${DHUB}:${NANOCLAW_VERSION}-riscv64"
 
-      - name: Smoke test — agent SDK initializes
+      - name: Bootstrap a v2 session workspace
         env:
           DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
         run: |
-          OUTPUT=$(echo '{}' | timeout 60 docker run --rm -i \
-            "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1) || true
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          echo "WORK=${WORK}" >> "${GITHUB_ENV}"
+          # v2 expects a host-prepared /workspace: inbound.db (read-only
+          # to the container), outbound.db, and agent/container.json.
+          # Build the DBs with the image's own riscv64 better-sqlite3 and
+          # the upstream host schema verbatim, so the smoke test stays in
+          # lock-step with upstream instead of a hand-copied schema.
+          BOOT="_fork/.github/smoke/bootstrap-session-dbs.mjs"
+          docker run --rm \
+            --entrypoint node \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/home/node \
+            -v "${WORK}:/work" \
+            -v "${PWD}/src/db/schema.ts:/schema.ts:ro" \
+            -v "${PWD}/${BOOT}:/bootstrap.mjs:ro" \
+            "${DHUB}:${NANOCLAW_VERSION}-riscv64" \
+            /bootstrap.mjs /schema.ts /work
+
+      - name: Smoke test - v2 agent-runner enters poll loop
+        env:
+          DHUB: ${{ secrets.DOCKERHUB_USERNAME }}/nanoclaw
+        run: |
+          set -uo pipefail
+          # v2 has no stdin/stdout contract: it polls inbound.db
+          # forever. With an empty inbound.db the loop idles, so a
+          # timeout kill after a clean start is the success signal.
+          # The entrypoint runs tsc (~45s on riscv64) first, so allow
+          # generous headroom.
+          OUTPUT="$(timeout 150 docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/home/node \
+            -v "${WORK}:/workspace" \
+            "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1)" || true
           echo "${OUTPUT}"
-          # NANOCLAW_OUTPUT_START proves the agent runner initialized and produced output
-          # The actual response may be "Not logged in" or a status JSON — either is fine
-          echo "${OUTPUT}" | grep -q "NANOCLAW_OUTPUT_START" \
-            && echo "Smoke test PASSED — agent SDK produced output" \
-            || (echo "Smoke test FAILED — no agent output detected" && exit 1)
-          # Fail on missing vendored binaries (the ripgrep issue)
-          if echo "${OUTPUT}" | grep -q "ENOENT"; then
-            echo "Smoke test FAILED — missing binary detected"
+          if ! echo "${OUTPUT}" | grep -q "Starting v2 agent-runner"; then
+            echo "Smoke test FAILED: v2 agent-runner did not start"
             exit 1
           fi
+          if echo "${OUTPUT}" | grep -q "Fatal error"; then
+            echo "Smoke test FAILED: fatal error during startup"
+            exit 1
+          fi
+          # Fail on missing vendored binaries (the ripgrep issue)
+          if echo "${OUTPUT}" | grep -q "ENOENT"; then
+            echo "Smoke test FAILED: missing binary detected"
+            exit 1
+          fi
+          echo "Smoke test PASSED: v2 runner reached the poll loop"
+
+      - name: Clean up session workspace
+        if: always()
+        run: |
+          rm -rf "${WORK:-}" || true
