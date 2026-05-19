@@ -37,9 +37,16 @@ const src = readFileSync(schemaPath, 'utf8');
 
 // The schema constants are exported as backtick template literals whose
 // bodies contain no backticks, so a non-greedy match to the closing `;
-// is safe.
+// is safe. The pattern tolerates non-semantic upstream changes (extra
+// whitespace, an optional TypeScript type annotation) so the smoke test
+// only breaks when the SQL itself changes.
 function extract(name) {
-  const m = src.match(new RegExp('export const ' + name + ' = `([\\s\\S]*?)`;'));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = src.match(
+    new RegExp(
+      'export\\s+const\\s+' + escaped + '(?:\\s*:[^=]+)?\\s*=\\s*`([\\s\\S]*?)`\\s*;'
+    )
+  );
   if (!m) {
     console.error(`could not find ${name} in ${schemaPath}`);
     process.exit(3);
@@ -57,12 +64,15 @@ writeFileSync(path.join(workDir, 'agent', 'container.json'), '{"provider":"claud
 
 for (const [file, schema] of Object.entries(schemas)) {
   const db = new Database(path.join(workDir, file));
-  // Match the host: ensureSchema() sets journal_mode = DELETE before
-  // applying the schema (WAL's -shm is not coherent across a host/guest
-  // mount boundary).
-  db.pragma('journal_mode = DELETE');
-  db.exec(schema);
-  db.close();
+  try {
+    // Match the host: ensureSchema() sets journal_mode = DELETE before
+    // applying the schema (WAL's -shm is not coherent across a host/guest
+    // mount boundary).
+    db.pragma('journal_mode = DELETE');
+    db.exec(schema);
+  } finally {
+    db.close();
+  }
   console.error(`bootstrapped ${file}`);
 }
 

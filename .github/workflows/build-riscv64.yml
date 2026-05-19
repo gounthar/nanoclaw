@@ -93,7 +93,6 @@ jobs:
       - name: Overlay smoke bootstrap from fork
         uses: actions/checkout@v4
         with:
-          ref: main
           sparse-checkout: |
             .github/smoke/bootstrap-session-dbs.mjs
           sparse-checkout-cone-mode: false
@@ -138,14 +137,22 @@ jobs:
           # timeout kill after a clean start is the success signal.
           # The entrypoint runs tsc (~45s on riscv64) first, so allow
           # generous headroom.
+          status=0
           OUTPUT="$(timeout 150 docker run --rm \
             --user "$(id -u):$(id -g)" \
             -e HOME=/home/node \
             -v "${WORK}:/workspace" \
-            "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1)" || true
+            "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1)" || status=$?
           echo "${OUTPUT}"
           if ! echo "${OUTPUT}" | grep -q "Starting v2 agent-runner"; then
             echo "Smoke test FAILED: v2 agent-runner did not start"
+            exit 1
+          fi
+          # The poll loop never exits on its own, so the timeout kill
+          # (exit 124) is the success signal. Any other exit code means
+          # the runner started and then died early, which is a failure.
+          if [ "${status}" -ne 124 ]; then
+            echo "Smoke test FAILED: runner exited early (status=${status})"
             exit 1
           fi
           if echo "${OUTPUT}" | grep -q "Fatal error"; then
