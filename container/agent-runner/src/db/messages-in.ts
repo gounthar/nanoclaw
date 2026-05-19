@@ -67,7 +67,18 @@ export function getPendingMessages(isFirstPoll = false): MessageInRow[] {
   const outbound = getOutboundDb();
 
   try {
-    const onWakeFilter = hasOnWakeColumn(inbound) ? 'AND (on_wake = 0 OR ?1 = 1)' : '';
+    // riscv64 fork: this image runs on better-sqlite3, not bun:sqlite.
+    // better-sqlite3 classifies ?1/?2 as named parameters and rejects
+    // spread-positional binding ("Too many parameter values were
+    // provided"). Use anonymous ? and pass exactly as many args as there
+    // are placeholders - the on_wake predicate (and its parameter) is
+    // only present when that column exists. Order is preserved: the
+    // on_wake ? precedes LIMIT ? in the SQL text.
+    const hasOnWake = hasOnWakeColumn(inbound);
+    const onWakeFilter = hasOnWake ? 'AND (on_wake = 0 OR ? = 1)' : '';
+    const params: number[] = [];
+    if (hasOnWake) params.push(isFirstPoll ? 1 : 0);
+    params.push(getMaxMessagesPerPrompt());
     const pending = inbound
       .prepare(
         `SELECT * FROM messages_in
@@ -75,9 +86,9 @@ export function getPendingMessages(isFirstPoll = false): MessageInRow[] {
            AND (process_after IS NULL OR datetime(process_after) <= datetime('now'))
            ${onWakeFilter}
          ORDER BY seq DESC
-         LIMIT ?2`,
+         LIMIT ?`,
       )
-      .all(isFirstPoll ? 1 : 0, getMaxMessagesPerPrompt()) as MessageInRow[];
+      .all(...params) as MessageInRow[];
 
     if (pending.length === 0) return [];
 
