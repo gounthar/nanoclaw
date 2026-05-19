@@ -95,6 +95,7 @@ jobs:
         with:
           sparse-checkout: |
             .github/smoke/bootstrap-session-dbs.mjs
+            .github/smoke/diag-sqlite-stack.cjs
           sparse-checkout-cone-mode: false
           path: _fork
 
@@ -141,6 +142,8 @@ jobs:
           OUTPUT="$(timeout 150 docker run --rm \
             --user "$(id -u):$(id -g)" \
             -e HOME=/home/node \
+            -e NODE_OPTIONS=--require=/diag.cjs \
+            -v "${PWD}/_fork/.github/smoke/diag-sqlite-stack.cjs:/diag.cjs:ro" \
             -v "${WORK}:/workspace" \
             "${DHUB}:${NANOCLAW_VERSION}-riscv64" 2>&1)" || status=$?
           echo "${OUTPUT}"
